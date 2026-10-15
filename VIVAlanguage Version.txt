@@ -1,5 +1,5 @@
 VIVAlanguage latest release
 
-Latest version: 1.3
+Latest version: 1.4
 
 Download page: https://language.vivatools.pt/get-VIVAlanguage
