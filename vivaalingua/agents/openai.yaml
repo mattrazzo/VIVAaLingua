@@ -1,0 +1,16 @@
+interface:
+  display_name: vivaalingua
+  short_description: Coach English speakers in European Portuguese with American-English
+    pronunciation respelling, translation, tutoring, quizzes, conversation practice,
+    and listening preparation. Use when VIVAaLingua is requested, for EP/PE translation
+    commands, or for European Portuguese learning tasks. Other commands and unprefixed
+    input use this skill when the context is Portuguese learning.
+  icon_small: assets/icon.svg
+  icon_large: assets/icon.svg
+policy:
+  products:
+  - chatgpt
+  - codex
+  - api
+  - atlas
+  allow_implicit_invocation: true
