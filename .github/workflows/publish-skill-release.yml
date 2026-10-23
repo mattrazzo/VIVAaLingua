@@ -1,0 +1,38 @@
+name: Package published skill release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: skill-release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the released tag
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Confirm release commit is on main
+        run: git merge-base --is-ancestor HEAD origin/main || { echo "The release tag must point to a commit merged into main." >&2; exit 1; }
+      - name: Check release automation
+        run: python -m unittest discover -s tests -v
+      - name: Validate tag and build packages
+        run: python scripts/build_skill_packages.py --release-tag "${GITHUB_REF_NAME}"
+      - name: Attach three ZIP files to the published release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.release.tag_name }}
+          files: dist/*.zip
+          fail_on_unmatched_files: true

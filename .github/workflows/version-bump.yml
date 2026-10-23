@@ -1,0 +1,52 @@
+name: Prepare version bump
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Next version, such as 1.6 or 1.5.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: prepare-version-bump
+  cancel-in-progress: false
+
+jobs:
+  version-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the default branch
+        run: test "$GITHUB_REF" = "refs/heads/main" || { echo "Run this workflow on main." >&2; exit 1; }
+      - name: Check out the default branch
+        uses: actions/checkout@v7
+        with:
+          ref: main
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Check release automation
+        run: python -m unittest discover -s tests -v
+      - name: Update both version fields
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+        run: python scripts/update_version.py --version "$VERSION_INPUT"
+      - name: Open or update the version pull request
+        uses: peter-evans/create-pull-request@v8
+        with:
+          branch: automation/version-bump
+          add-paths: |
+            VIVAaLingua Version.txt
+            src/vivaalingua/SKILL.md
+          delete-branch: false
+          title: "Prepare VIVAaLingua ${{ inputs.version }}"
+          commit-message: "Prepare VIVAaLingua ${{ inputs.version }}"
+          body: |
+            Updates the coordinated VIVAaLingua version fields.
+
+            Review and merge this pull request before creating the matching GitHub Release.
