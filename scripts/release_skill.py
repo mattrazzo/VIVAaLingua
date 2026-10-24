@@ -32,7 +32,7 @@ class GitHub:
             raise ValueError("Expected an owner/repository name.")
         self.repository = repository
 
-    def api(self, suffix: str, missing_ok: bool = False) -> dict | None:
+    def api(self, suffix: str, missing_ok: bool = False, list_result: bool = False) -> dict | list | None:
         result = subprocess.run(
             ["gh", "api", f"repos/{self.repository}/{suffix}"], capture_output=True, text=True
         )
@@ -44,12 +44,26 @@ class GitHub:
             if missing_ok and str(data.get("status")) == "404":
                 return None
             raise RuntimeError(f"GitHub request failed: {result.stderr.strip() or result.stdout.strip()}")
-        if not isinstance(data, dict) or not data:
+        expected_type = list if list_result else dict
+        if not isinstance(data, expected_type) or (not list_result and not data):
             raise RuntimeError("GitHub returned an unexpected response.")
         return data
 
     def release(self, tag: str) -> dict | None:
-        return self.api(f"releases/tags/{tag}", missing_ok=True)
+        published = self.api(f"releases/tags/{tag}", missing_ok=True)
+        if published is not None:
+            return published
+        # The tag endpoint returns published releases only. Authenticated release
+        # listings include drafts, which must then be read through their ID.
+        page = 1
+        while True:
+            releases = self.api(f"releases?per_page=100&page={page}", list_result=True)
+            for release in releases:
+                if release.get("tag_name") == tag:
+                    return self.api(f"releases/{release['id']}")
+            if len(releases) < 100:
+                return None
+            page += 1
 
     def tag_commit(self, tag: str) -> str | None:
         ref = self.api(f"git/ref/tags/{tag}", missing_ok=True)
@@ -92,6 +106,26 @@ def verify_assets(release: dict, paths: list[Path]) -> None:
             raise ValueError(f"Release asset digest does not match: {path.name}")
 
 
+def find_run_commit(root: Path, marker: str) -> str | None:
+    candidates = command([
+        "git", "log", "--format=%H", "--fixed-strings",
+        f"--grep={marker.splitlines()[-1]}", "HEAD",
+    ], root).splitlines()
+    for commit in candidates:
+        if command(["git", "log", "-1", "--format=%B", commit], root) != marker:
+            continue
+        # Permit an automation fix to be merged before resuming, while keeping
+        # the release's original package inputs and target commit unchanged.
+        changed = command([
+            "git", "diff", "--name-only", commit, "HEAD", "--",
+            str(VERSION_FILE), "src/vivaalingua", "scripts/build_skill_packages.py",
+        ], root)
+        if changed:
+            raise ValueError("Package sources changed since this run's version commit; inspect the unfinished release before recovery.")
+        return commit
+    return None
+
+
 def release_skill(root: Path, version: str, run_id: str, github: GitHub) -> str:
     parse_version(version)
     if not run_id.isdigit():
@@ -106,9 +140,11 @@ def release_skill(root: Path, version: str, run_id: str, github: GitHub) -> str:
 
     current = coordinated_version(root)
     marker = f"Release VIVAaLingua {version}\n\nGitHub-Actions-Run: {run_id}"
-    retry = current == version and command(["git", "log", "-1", "--format=%B"], root) == marker
+    retry_commit = find_run_commit(root, marker) if current == version else None
+    retry = retry_commit is not None
     if not retry and parse_version(version) <= parse_version(current):
         raise ValueError(f"Version {version} must be greater than {current}; only the same Actions run may resume its release commit.")
+    commit = retry_commit or commit
 
     tag = f"v{version}"
     existing = github.release(tag)
