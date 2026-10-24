@@ -7,7 +7,7 @@ description: Coach English speakers in European Portuguese with American-English
 
 ## Version Information
 
-- Installed version: `1.5.3`
+- Installed version: `1.5.4`
 - Version-check URL: `https://raw.githubusercontent.com/mattrazzo/VIVAaLingua/main/release/VERSION`
 - Download URL: `https://language.vivatools.pt/get-VIVAaLingua`
 
