@@ -1,6 +1,6 @@
 # Releasing VIVAaLingua skills
 
-The repository version is managed in two places: `VIVAaLingua Version.txt` and the Installed version field in `src/vivaalingua/SKILL.md`. The automation checks that they agree before packaging.
+The repository version is managed in two places: `release/VIVAaLingua Version.txt` and the Installed version field in `src/vivaalingua/SKILL.md`. The automation checks that they agree before packaging.
 
 ## Prepare the next version
 
