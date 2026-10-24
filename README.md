@@ -82,7 +82,7 @@ src/vivaalingua/
   agents/openai.yaml   OpenAI interface metadata
 scripts/               Version management and ZIP packaging
 tests/                 Automated release and package checks
-.github/workflows/     Version PR and release packaging workflows
+.github/workflows/     Release VIVAaLingua workflow
 docs/RELEASING.md      Maintainer release instructions
 release/               Version information and previously stored package ZIPs
   VERSION
@@ -108,10 +108,11 @@ Automated checks cover version validation, archive contents, and reproducible bu
 
 ## Preparing a Release
 
-1. Run **Prepare version bump** from the repository’s Actions tab on `main`, entering a higher version such as `1.6` or `1.5.2`.
-2. Review and merge the generated PR, which updates `release/VERSION` and the installed version in `SKILL.md`.
-3. Publish a GitHub Release with the matching tag, such as `v1.6`, targeting the merged version commit.
-4. **Package published skill release** validates the versions, builds the three ZIPs, and attaches them automatically.
+1. Commit and push your finished edits to `main`. If you use a branch, merge it into `main` first.
+2. Open [Release VIVAaLingua](https://github.com/mattrazzo/VIVAaLingua/actions/workflows/release.yml), click **Run workflow**, keep `main` selected, and enter the next version without `v`.
+3. Click the green **Run workflow** button. The workflow updates both version files, runs the package build, commits the version change, creates the tag, and publishes the release after all six ZIP assets are uploaded and checked.
+
+The workflow handles the version numbers and release form. Before your next local edit, fetch and pull `main` to receive its version commit. Documentation-only edits need a normal commit and push.
 
 See [Releasing VIVAaLingua Skills](docs/RELEASING.md) for repository settings and the full procedure.
 
