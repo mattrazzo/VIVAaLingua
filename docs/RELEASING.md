@@ -37,7 +37,7 @@ A failed build publishes nothing. If an upload fails, its release remains a draf
 
 Open the failed run and choose **Re-run all jobs** to retry with the original version input. The same Actions run can resume its own version commit and unfinished draft. It checks an already completed release without replacing published assets. Starting a new workflow with the same version is rejected.
 
-Retry before making further commits to `main`. If `main` has advanced since a partially completed release, the workflow stops and requires inspection of that draft and version commit before recovery. It also stops if an existing draft or tag points to a different commit.
+The same run can also resume after an automation or documentation fix is merged into `main`. It finds its original version commit and requires the skill sources, `release/VERSION`, and package builder to match that commit. The release still targets the original version commit. If those package inputs have changed, the workflow stops for inspection. It also stops if an existing draft or tag points to a different commit.
 
 ## Permanent Downloads and Version Data
 
