@@ -84,12 +84,13 @@ scripts/               Version management and ZIP packaging
 tests/                 Automated release and package checks
 .github/workflows/     Release VIVAaLingua workflow
 docs/RELEASING.md      Maintainer release instructions
-release/               Version information and previously stored package ZIPs
+release/               Version information
   VERSION
+dist/latest/           Three current published skill ZIPs, tracked in Git
 LICENSE.md
 ```
 
-The [skill instructions](src/VIVAaLingua/SKILL.md) define command routing and response formats. Edit the source under `src/VIVAaLingua/`. New builds go into the ignored `dist/` directory and are attached to GitHub Releases without committing generated ZIPs.
+The [skill instructions](src/VIVAaLingua/SKILL.md) define command routing and response formats. Edit the source under `src/VIVAaLingua/`. Builds go into `dist/` and are attached to GitHub Releases. After publication, the workflow commits the three current ZIPs in [`dist/latest/`](dist/latest/). Pull `main` in GitHub Desktop to receive those ZIPs locally. Other build outputs in `dist/` remain ignored.
 
 ## Local Builds and Checks
 
@@ -112,7 +113,7 @@ Automated checks cover version validation, archive contents, and reproducible bu
 2. Open [Release VIVAaLingua](https://github.com/mattrazzo/VIVAaLingua/actions/workflows/release.yml), click **Run workflow**, keep `main` selected, and enter the next version without `v`.
 3. Click the green **Run workflow** button. The workflow updates both version files, runs the package build, commits the version change, creates the tag, and publishes the release after all six ZIP assets are uploaded and checked.
 
-The workflow handles the version numbers and release form. Before your next local edit, fetch and pull `main` to receive its version commit. Documentation-only edits need a normal commit and push.
+The workflow handles the version numbers and release form. After the run succeeds, fetch and pull `main` in GitHub Desktop to receive the version changes and all three latest ZIPs in `dist/latest/`. You can install directly from that local folder. Pull again before your next edit. Documentation-only edits need a normal commit and push.
 
 See [Releasing VIVAaLingua Skills](docs/RELEASING.md) for repository settings and the full procedure.
 
