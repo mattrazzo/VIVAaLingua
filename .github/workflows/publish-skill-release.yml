@@ -30,7 +30,13 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Validate tag and build packages
         run: python scripts/build_skill_packages.py --release-tag "${GITHUB_REF_NAME}"
-      - name: Attach three ZIP files to the published release
+      - name: Create stable download filenames
+        shell: bash
+        run: |
+          for platform in ChatGPT Claude Gemini; do
+            cp "dist/VIVAaLingua-${platform}-${GITHUB_REF_NAME}.zip" "dist/VIVAaLingua-${platform}.zip"
+          done
+      - name: Attach versioned and stable ZIP files to the published release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event.release.tag_name }}
