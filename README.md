@@ -1,10 +1,10 @@
-# VIVAaLingua
+# VIVAaLíngua
 
 European Portuguese coaching for English speakers, built for everyday life in Portugal.
 
-VIVAaLingua is a skill for your AI assistant. It combines translation, readable pronunciation, grammar, and practice, with explanations in American English. Its teaching target is contemporary European Portuguese (PT-PT), centered on the Lisbon–Coimbra standard, with regional differences explained when useful.
+VIVAaLíngua is a skill for your AI assistant. It combines translation, readable pronunciation, grammar, and practice, with explanations in American English. Its teaching target is contemporary European Portuguese (PT-PT), centered on the Lisbon–Coimbra standard, with regional differences explained when useful.
 
-[Website](https://language.vivatools.pt/) · [How to Use](https://language.vivatools.pt/how-to-use.html) · [Installation Guide](https://language.vivatools.pt/get-vivaalingua.html) · [Latest Release](https://github.com/mattrazzo/VIVAaLingua/releases/latest)
+[Website](https://language.vivatools.pt/) · [How to Use](https://language.vivatools.pt/how-to-use.html) · [Installation Guide](https://language.vivatools.pt/get-VIVAaLingua.html) · [Latest Release](https://github.com/mattrazzo/VIVAaLingua/releases/latest)
 
 ## What You Can Do
 
@@ -21,7 +21,7 @@ VIVAaLingua is a skill for your AI assistant. It combines translation, readable 
 You need a ChatGPT, Claude, or Gemini account with skill uploads available.
 
 1. Open the [latest GitHub Release](https://github.com/mattrazzo/VIVAaLingua/releases/latest) and download the ZIP named for your platform: ChatGPT, Claude, or Gemini.
-2. Keep the file zipped and follow the matching steps in the [installation guide](https://language.vivatools.pt/get-vivaalingua.html).
+2. Keep the file zipped and follow the matching steps in the [installation guide](https://language.vivatools.pt/get-VIVAaLingua.html).
 3. Start a new chat, invoke the skill as described in the guide, and ask for help with a word, phrase, or situation.
 
 Commands are optional. You can ask naturally:
@@ -75,7 +75,7 @@ English approximations cannot reproduce every Portuguese sound. Use them alongsi
 ## Repository Structure
 
 ```text
-src/vivaalingua/
+src/VIVAaLingua/
   SKILL.md             Skill instructions and response rules
   references/          Coaching, pronunciation, help, and regression cases
   assets/              Skill icon
@@ -89,7 +89,7 @@ release/               Version information and previously stored package ZIPs
 LICENSE.md
 ```
 
-The [skill instructions](src/vivaalingua/SKILL.md) define command routing and response formats. Edit the source under `src/vivaalingua/`. New builds go into the ignored `dist/` directory and are attached to GitHub Releases without committing generated ZIPs.
+The [skill instructions](src/VIVAaLingua/SKILL.md) define command routing and response formats. Edit the source under `src/VIVAaLingua/`. New builds go into the ignored `dist/` directory and are attached to GitHub Releases without committing generated ZIPs.
 
 ## Local Builds and Checks
 
@@ -102,9 +102,9 @@ python3 -m unittest discover -s tests -v
 python3 scripts/build_skill_packages.py
 ```
 
-The builder creates one ZIP per platform. ChatGPT and Claude use a `vivaalingua/` wrapper. Gemini puts `SKILL.md` at the ZIP root. Only ChatGPT includes `agents/openai.yaml`.
+The builder creates one ZIP per platform. ChatGPT and Claude use a `VIVAaLingua/` wrapper. Gemini puts `SKILL.md` at the ZIP root. Only ChatGPT includes `agents/openai.yaml`.
 
-Automated checks cover version validation, archive contents, and reproducible builds. They do not establish platform import acceptance or teaching accuracy. Use the [manual regression cases](src/vivaalingua/references/regression-tests.md) to assess responses in each platform.
+Automated checks cover version validation, archive contents, and reproducible builds. They do not establish platform import acceptance or teaching accuracy. Use the [manual regression cases](src/VIVAaLingua/references/regression-tests.md) to assess responses in each platform.
 
 ## Preparing a Release
 
