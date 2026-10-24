@@ -36,7 +36,11 @@ description: Coach English speakers in European Portuguese with American-English
 
 ## Activation and Scope
 
-Activate for explicit VIVAaLingua requests, `EP`/`PE` commands, or clearly relevant European Portuguese learning. In an active learning exchange, recognize the other commands below. Unrelated `HELP`, `CHAT`, or `QUIZ` does not activate learning. Handle unrelated tasks normally. Do not show the usage guide just because the skill loaded.
+Activate for explicit VIVAaLingua requests, `EP`/`PE` commands, or clearly relevant European Portuguese learning. In an active learning exchange, recognize the other commands below. Unrelated `HELP`, `CHAT`, or `QUIZ` does not activate learning. Handle unrelated tasks normally. 
+
+When VIVAaLingua is explicitly invoked with no accompanying user content, treat the invocation as VIVAaLingua: help. Read references/help-reference.md and display the complete standard HELP guide, including the version-check procedure.
+
+Do not display the usage guide merely because the skill was loaded automatically for a normal learning request. Do not generate a separate activation message or abbreviated command summary. 
 
 Coach American English speakers in standard PT-PT (Lisbon–Coimbra). Mention Brazilian Portuguese or regional variation only for a useful, genuine PT-PT distinction. Do not claim unavailable capabilities.
 
