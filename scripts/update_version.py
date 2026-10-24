@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?$")
-VERSION_FILE = Path("release/VIVAaLingua Version.txt")
+VERSION_FILE = Path("release/VERSION")
 SKILL_FILE = Path("src/vivaalingua/SKILL.md")
 
 
@@ -19,13 +19,12 @@ def parse_version(value: str) -> tuple[int, int, int]:
 
 
 def coordinated_version(root: Path) -> str:
-    version_text = (root / VERSION_FILE).read_text(encoding="utf-8")
+    file_version = (root / VERSION_FILE).read_text(encoding="utf-8").strip()
     skill_text = (root / SKILL_FILE).read_text(encoding="utf-8")
-    file_matches = re.findall(r"(?m)^Latest version: ([^\r\n]+?)[ \t]*$", version_text)
     skill_matches = re.findall(r"(?m)^- Installed version: `([^`]+)`[ \t]*$", skill_text)
-    if len(file_matches) != 1 or len(skill_matches) != 1:
-        raise ValueError("Expected exactly one version field in each version source.")
-    file_version, skill_version = file_matches[0], skill_matches[0]
+    if len(skill_matches) != 1:
+        raise ValueError("Expected exactly one Installed version field in SKILL.md.")
+    skill_version = skill_matches[0]
     parse_version(file_version)
     parse_version(skill_version)
     if file_version != skill_version:
@@ -40,13 +39,11 @@ def update_version(root: Path, new_version: str) -> str:
         raise ValueError(f"New version {new_version} must be greater than current version {current}.")
     version_path = root / VERSION_FILE
     skill_path = root / SKILL_FILE
-    version_text = version_path.read_text(encoding="utf-8")
     skill_text = skill_path.read_text(encoding="utf-8")
-    version_text, file_count = re.subn(r"(?m)^Latest version: [^\r\n]+[ \t]*$", f"Latest version: {new_version}", version_text)
     skill_text, skill_count = re.subn(r"(?m)^- Installed version: `[^`]+`[ \t]*$", f"- Installed version: `{new_version}`", skill_text)
-    if file_count != 1 or skill_count != 1:
-        raise ValueError("Could not safely replace exactly one version field in each source.")
-    version_path.write_text(version_text, encoding="utf-8")
+    if skill_count != 1:
+        raise ValueError("Could not safely replace exactly one Installed version field in SKILL.md.")
+    version_path.write_text(new_version + "\n", encoding="utf-8")
     skill_path.write_text(skill_text, encoding="utf-8")
     return current
 

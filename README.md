@@ -85,7 +85,7 @@ tests/                 Automated release and package checks
 .github/workflows/     Version PR and release packaging workflows
 docs/RELEASING.md      Maintainer release instructions
 release/               Version information and previously stored package ZIPs
-  VIVAaLingua Version.txt
+  VERSION
 LICENSE.md
 ```
 
@@ -109,7 +109,7 @@ Automated checks cover version validation, archive contents, and reproducible bu
 ## Preparing a Release
 
 1. Run **Prepare version bump** from the repository’s Actions tab on `main`, entering a higher version such as `1.6` or `1.5.2`.
-2. Review and merge the generated PR, which updates `release/VIVAaLingua Version.txt` and the installed version in `SKILL.md`.
+2. Review and merge the generated PR, which updates `release/VERSION` and the installed version in `SKILL.md`.
 3. Publish a GitHub Release with the matching tag, such as `v1.6`, targeting the merged version commit.
 4. **Package published skill release** validates the versions, builds the three ZIPs, and attaches them automatically.
 

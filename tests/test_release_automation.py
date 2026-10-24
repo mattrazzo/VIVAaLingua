@@ -18,8 +18,8 @@ class VersionManagementTests(unittest.TestCase):
         self.root = Path(self.temp.name)
         (self.root / "src/vivaalingua").mkdir(parents=True)
         (self.root / "release").mkdir()
-        (self.root / "release/VIVAaLingua Version.txt").write_text(
-            "VIVAaLingua latest release\n\nLatest version: 1.5\n\nDownload page: https://example.test\n",
+        (self.root / "release/VERSION").write_text(
+            "1.5\n",
             encoding="utf-8",
         )
         (self.root / "src/vivaalingua/SKILL.md").write_text(
@@ -34,7 +34,8 @@ class VersionManagementTests(unittest.TestCase):
         self.assertEqual(update_version(self.root, "1.6"), "1.5")
         self.assertEqual(coordinated_version(self.root), "1.6")
         self.assertFalse((self.root / "VIVAaLingua Version.txt").exists())
-        self.assertIn("Latest version: 1.6", (self.root / "release/VIVAaLingua Version.txt").read_text(encoding="utf-8"))
+        self.assertFalse((self.root / "release/VIVAaLingua Version.txt").exists())
+        self.assertEqual((self.root / "release/VERSION").read_text(encoding="utf-8"), "1.6\n")
 
     def test_updates_both_fields_with_three_part_version(self) -> None:
         self.assertEqual(update_version(self.root, "1.5.1"), "1.5")
@@ -57,6 +58,17 @@ class VersionManagementTests(unittest.TestCase):
 
     def test_version_comparison_treats_missing_patch_as_zero(self) -> None:
         self.assertEqual(parse_version("1.5"), parse_version("1.5.0"))
+
+    def test_rejects_invalid_version_file_without_changing_sources(self) -> None:
+        version_path = self.root / "release/VERSION"
+        skill_path = self.root / "src/vivaalingua/SKILL.md"
+        for invalid in ("", "Latest version: 1.5\n", "1.5\n1.6\n", "v1.5\n"):
+            with self.subTest(content=invalid):
+                version_path.write_text(invalid, encoding="utf-8")
+                before = (version_path.read_bytes(), skill_path.read_bytes())
+                with self.assertRaises(ValueError):
+                    update_version(self.root, "1.6")
+                self.assertEqual(before, (version_path.read_bytes(), skill_path.read_bytes()))
 
 
 class PackageTests(unittest.TestCase):
