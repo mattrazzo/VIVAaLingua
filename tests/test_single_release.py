@@ -37,11 +37,12 @@ class FakeGitHub:
             raise RuntimeError("Interrupted draft creation")
         self.events.append("draft")
         self.data = {
-            "draft": True, "prerelease": False, "target_commitish": commit,
+            "id": 7, "tag_name": tag, "draft": True, "prerelease": False, "target_commitish": commit,
             "assets": [], "html_url": f"https://example.test/releases/{tag}",
         }
+        return copy.deepcopy(self.data)
 
-    def upload(self, tag, paths):
+    def upload(self, release, paths):
         assert self.data["draft"], "Published assets must never be overwritten"
         self.events.append("upload")
         assets = {asset["name"]: asset for asset in self.data["assets"]}
@@ -56,29 +57,31 @@ class FakeGitHub:
                 raise RuntimeError("Interrupted upload")
         if self.corrupt_digest:
             self.data["assets"][0]["digest"] = "sha256:incorrect"
+        return copy.deepcopy(self.data)
 
-    def publish(self, tag):
+    def publish(self, release):
         assert self.data["draft"]
         assert len(self.data["assets"]) == 6, "All ZIPs must exist before publication"
         self.events.append("publish")
         self.data["draft"] = False
-        self.tags[tag] = self.data["target_commitish"]
+        self.tags[release["tag_name"]] = self.data["target_commitish"]
+        return copy.deepcopy(self.data)
 
 
 class DraftApiClient(GitHub):
-    """Model the real API: drafts appear in listings and ID lookups, not by tag."""
+    """Model draft recovery through GraphQL and a REST lookup by ID."""
 
     def __init__(self, backend):
         super().__init__("mattrazzo/VIVAaLingua")
         self.backend = backend
         self.tag = None
 
-    def api(self, suffix, missing_ok=False, list_result=False):
+    def api(self, suffix, missing_ok=False, **kwargs):
         data = self.backend.release(self.tag)
         if suffix.startswith("releases/tags/"):
             return data if data and not data["draft"] and suffix.endswith(self.tag) else None
-        if suffix.startswith("releases?"):
-            return [{"id": 7, "tag_name": self.tag}] if data else []
+        if suffix == "graphql":
+            return {"data": {"repository": {"release": {"databaseId": 7} if data else None}}}
         if suffix == "releases/7":
             return data
         raise AssertionError(f"Unexpected request: {suffix}")
@@ -87,14 +90,15 @@ class DraftApiClient(GitHub):
         return self.backend.tag_commit(tag)
 
     def create_draft(self, tag, commit):
-        self.backend.create_draft(tag, commit)
+        result = self.backend.create_draft(tag, commit)
         self.tag = tag
+        return result
 
-    def upload(self, tag, paths):
-        self.backend.upload(tag, paths)
+    def upload(self, release, paths):
+        return self.backend.upload(release, paths)
 
-    def publish(self, tag):
-        self.backend.publish(tag)
+    def publish(self, release):
+        return self.backend.publish(release)
 
 
 class SingleReleaseTests(unittest.TestCase):
@@ -157,9 +161,9 @@ class SingleReleaseTests(unittest.TestCase):
         self.assertEqual(latest.read_bytes(), b"previous published ZIP")
         original_publish = self.github.publish
 
-        def publish(tag):
+        def publish(release):
             self.assertEqual(latest.read_bytes(), b"previous published ZIP")
-            original_publish(tag)
+            return original_publish(release)
 
         self.github.publish = publish
         self.run_release()
@@ -193,6 +197,23 @@ class SingleReleaseTests(unittest.TestCase):
         head = command(["git", "rev-parse", "HEAD"], self.root)
         self.run_release()
         self.assertEqual(command(["git", "rev-parse", "HEAD"], self.root), head)
+
+    def test_created_draft_does_not_need_to_be_rediscovered(self):
+        original_create = self.github.create_draft
+
+        def create(tag, commit):
+            original_create(tag, commit)
+            return copy.deepcopy(self.github.data)
+
+        def lookup(tag):
+            if self.github.data is not None:
+                raise AssertionError("New draft is not visible through discovery")
+            return None
+
+        self.github.create_draft = create
+        self.github.release = lookup
+        self.run_release()
+        self.assertEqual(self.github.events, ["draft", "upload", "publish"])
 
     def test_three_part_version_is_supported(self):
         self.run_release("1.5.1")
@@ -260,9 +281,10 @@ class SingleReleaseTests(unittest.TestCase):
     def test_missing_uploaded_asset_keeps_release_unpublished(self):
         original_upload = self.github.upload
 
-        def omit_asset(tag, paths):
-            original_upload(tag, paths)
+        def omit_asset(release, paths):
+            original_upload(release, paths)
             self.github.data["assets"].pop()
+            return copy.deepcopy(self.github.data)
 
         self.github.upload = omit_asset
         with self.assertRaisesRegex(ValueError, "missing or incomplete"):
@@ -339,6 +361,60 @@ class SingleReleaseTests(unittest.TestCase):
 
 
 class GitHubResponseTests(unittest.TestCase):
+    def test_create_upload_publish_use_response_id_and_binary_file(self):
+        github = GitHub("mattrazzo/VIVAaLingua")
+        draft = {"id": 17, "tag_name": "v1.6", "target_commitish": "abc", "draft": True, "assets": []}
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "VIVAaLingua-Claude.zip"
+            path.write_bytes(b"ZIP binary payload")
+            asset = {"id": 23, "name": path.name, "state": "uploaded", "size": path.stat().st_size}
+            published = {**draft, "draft": False, "assets": [asset]}
+            responses = [subprocess.CompletedProcess([], 0, stdout=json.dumps(data), stderr="")
+                         for data in (draft, asset, published)]
+            with patch("scripts.release_skill.subprocess.run", side_effect=responses) as run:
+                pending = github.create_draft("v1.6", "abc")
+                uploaded = github.upload(pending, [path])
+                self.assertEqual(github.publish(uploaded), published)
+            calls = run.call_args_list
+            self.assertEqual(len(calls), 3)
+            create, upload, publish = [call.args[0] for call in calls]
+            self.assertEqual(create[2], "repos/mattrazzo/VIVAaLingua/releases")
+            self.assertEqual(json.loads(calls[0].kwargs["input"]), {
+                "tag_name": "v1.6", "target_commitish": "abc", "name": "VIVAaLingua v1.6",
+                "generate_release_notes": True, "draft": True,
+            })
+            self.assertEqual(upload[2], "https://uploads.github.com/repos/mattrazzo/VIVAaLingua/releases/17/assets?name=" + path.name)
+            self.assertEqual(upload[upload.index("--input") + 1], str(path))
+            self.assertIn("Content-Type: application/zip", upload)
+            self.assertEqual(publish[2], "repos/mattrazzo/VIVAaLingua/releases/17")
+            self.assertEqual(publish[publish.index("--method") + 1], "PATCH")
+            self.assertEqual(json.loads(calls[2].kwargs["input"]), {"draft": False, "make_latest": "true"})
+
+    def test_partial_draft_replaces_asset_by_id_before_binary_upload(self):
+        github = GitHub("mattrazzo/VIVAaLingua")
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "VIVAaLingua-Claude.zip"
+            path.write_bytes(b"new ZIP")
+            asset = {"id": 24, "name": path.name, "state": "uploaded", "size": 7}
+            draft = {"id": 17, "draft": True, "assets": [{"id": 23, "name": path.name}]}
+            responses = [subprocess.CompletedProcess([], 0, stdout="", stderr=""),
+                         subprocess.CompletedProcess([], 0, stdout=json.dumps(asset), stderr="")]
+            with patch("scripts.release_skill.subprocess.run", side_effect=responses) as run:
+                updated = github.upload(draft, [path])
+            self.assertEqual(updated["assets"], [asset])
+            delete = run.call_args_list[0].args[0]
+            self.assertEqual(delete[2], "repos/mattrazzo/VIVAaLingua/releases/assets/23")
+            self.assertEqual(delete[delete.index("--method") + 1], "DELETE")
+
+    def test_published_assets_cannot_be_mutated(self):
+        github = GitHub("mattrazzo/VIVAaLingua")
+        with patch("scripts.release_skill.subprocess.run") as run:
+            with self.assertRaises(ValueError):
+                github.upload({"id": 17, "draft": False}, [])
+            with self.assertRaises(ValueError):
+                github.publish({"id": 17, "draft": False})
+            run.assert_not_called()
+
     def test_only_explicit_not_found_is_treated_as_absent(self):
         github = GitHub("mattrazzo/VIVAaLingua")
         for status in ("404", "403", "500"):
@@ -354,41 +430,38 @@ class GitHubResponseTests(unittest.TestCase):
         draft = {"id": 7, "tag_name": "v1.6", "draft": True, "target_commitish": "abc", "assets": []}
         responses = [
             subprocess.CompletedProcess([], 1, stdout='{"status":"404"}', stderr="Not Found"),
-            subprocess.CompletedProcess([], 0, stdout=json.dumps([draft]), stderr=""),
+            subprocess.CompletedProcess([], 0, stdout=json.dumps({"data":{"repository":{"release":{"databaseId":7}}}}), stderr=""),
             subprocess.CompletedProcess([], 0, stdout=json.dumps(draft), stderr=""),
         ]
         with patch("scripts.release_skill.subprocess.run", side_effect=responses) as run:
             self.assertEqual(GitHub("mattrazzo/VIVAaLingua").release("v1.6"), draft)
-            self.assertTrue(run.call_args_list[-1].args[0][-1].endswith("releases/7"))
+            self.assertTrue(run.call_args_list[-1].args[0][2].endswith("releases/7"))
 
-    def test_draft_lookup_follows_all_release_pages(self):
-        draft = {"id": 7, "tag_name": "v1.6", "draft": True}
+    def test_graphql_errors_are_not_treated_as_absent(self):
         responses = [
             subprocess.CompletedProcess([], 1, stdout='{"status":"404"}', stderr="Not Found"),
-            subprocess.CompletedProcess([], 0, stdout=json.dumps([{"id": i, "tag_name": f"other-{i}"} for i in range(100)]), stderr=""),
-            subprocess.CompletedProcess([], 0, stdout=json.dumps([draft]), stderr=""),
-            subprocess.CompletedProcess([], 0, stdout=json.dumps(draft), stderr=""),
+            subprocess.CompletedProcess([], 0, stdout='{"errors":[{"message":"Forbidden"}]}', stderr=""),
         ]
-        with patch("scripts.release_skill.subprocess.run", side_effect=responses) as run:
-            self.assertEqual(GitHub("mattrazzo/VIVAaLingua").release("v1.6"), draft)
-            self.assertTrue(run.call_args_list[2].args[0][-1].endswith("page=2"))
+        with patch("scripts.release_skill.subprocess.run", side_effect=responses):
+            with self.assertRaises(RuntimeError):
+                GitHub("mattrazzo/VIVAaLingua").release("v1.6")
 
-    def test_absent_release_returns_none_after_empty_listing(self):
+    def test_absent_release_returns_none_after_graphql_null(self):
         responses = [
             subprocess.CompletedProcess([], 1, stdout='{"status":"404"}', stderr="Not Found"),
-            subprocess.CompletedProcess([], 0, stdout="[]", stderr=""),
+            subprocess.CompletedProcess([], 0, stdout=json.dumps({"data":{"repository":{"release":None}}}), stderr=""),
         ]
         with patch("scripts.release_skill.subprocess.run", side_effect=responses):
             self.assertIsNone(GitHub("mattrazzo/VIVAaLingua").release("v1.6"))
 
-    def test_published_release_does_not_need_draft_listing(self):
+    def test_published_release_does_not_need_draft_lookup(self):
         published = {"id": 7, "tag_name": "v1.6", "draft": False}
         result = subprocess.CompletedProcess([], 0, stdout=json.dumps(published), stderr="")
         with patch("scripts.release_skill.subprocess.run", return_value=result) as run:
             self.assertEqual(GitHub("mattrazzo/VIVAaLingua").release("v1.6"), published)
             self.assertEqual(run.call_count, 1)
 
-    def test_draft_listing_permission_error_is_not_treated_as_absent(self):
+    def test_draft_lookup_permission_error_is_not_treated_as_absent(self):
         responses = [
             subprocess.CompletedProcess([], 1, stdout='{"status":"404"}', stderr="Not Found"),
             subprocess.CompletedProcess([], 1, stdout='{"status":"403"}', stderr="Forbidden"),

@@ -32,38 +32,54 @@ class GitHub:
             raise ValueError("Expected an owner/repository name.")
         self.repository = repository
 
-    def api(self, suffix: str, missing_ok: bool = False, list_result: bool = False) -> dict | list | None:
-        result = subprocess.run(
-            ["gh", "api", f"repos/{self.repository}/{suffix}"], capture_output=True, text=True
-        )
+    def api(self, suffix: str, missing_ok: bool = False, *, method: str = "GET",
+            payload: dict | None = None, input_file: Path | None = None,
+            empty_ok: bool = False) -> dict | None:
+        endpoint = suffix if suffix == "graphql" or suffix.startswith("https://uploads.github.com/") else f"repos/{self.repository}/{suffix}"
+        args = ["gh", "api", endpoint, "--method", method, "-H", "Cache-Control: no-cache"]
+        options = {"capture_output": True, "text": True}
+        if payload is not None:
+            args += ["--input", "-"]
+            options["input"] = json.dumps(payload)
+        if input_file is not None:
+            args += ["--input", str(input_file), "-H", "Content-Type: application/zip"]
+        result = subprocess.run(args, **options)
         try:
             data = json.loads(result.stdout)
         except json.JSONDecodeError:
-            data = {}
+            data = None
         if result.returncode:
-            if missing_ok and str(data.get("status")) == "404":
+            if missing_ok and isinstance(data, dict) and str(data.get("status")) == "404":
                 return None
             raise RuntimeError(f"GitHub request failed: {result.stderr.strip() or result.stdout.strip()}")
-        expected_type = list if list_result else dict
-        if not isinstance(data, expected_type) or (not list_result and not data):
-            raise RuntimeError("GitHub returned an unexpected response.")
+        if empty_ok and not result.stdout.strip():
+            return None
+        if not isinstance(data, dict) or not data or data.get("errors"):
+            raise RuntimeError(f"GitHub returned an unexpected response: {result.stdout.strip()}")
         return data
 
     def release(self, tag: str) -> dict | None:
         published = self.api(f"releases/tags/{tag}", missing_ok=True)
         if published is not None:
             return published
-        # The tag endpoint returns published releases only. Authenticated release
-        # listings include drafts, which must then be read through their ID.
-        page = 1
-        while True:
-            releases = self.api(f"releases?per_page=100&page={page}", list_result=True)
-            for release in releases:
-                if release.get("tag_name") == tag:
-                    return self.api(f"releases/{release['id']}")
-            if len(releases) < 100:
+        # Match GitHub CLI's draft lookup: GraphQL resolves a pending tag to an
+        # ID even when the REST published-tag endpoint does not expose it.
+        owner, name = self.repository.split("/")
+        result = self.api("graphql", method="POST", payload={
+            "query": "query($owner:String!,$name:String!,$tag:String!){repository(owner:$owner,name:$name){release(tagName:$tag){databaseId}}}",
+            "variables": {"owner": owner, "name": name, "tag": tag},
+        })
+        try:
+            repository = result["data"]["repository"]
+            if repository is None:
+                raise ValueError("Repository is inaccessible during draft lookup.")
+            release = repository["release"]
+            if release is None:
                 return None
-            page += 1
+            release_id = release["databaseId"]
+        except (KeyError, TypeError) as exc:
+            raise RuntimeError("GitHub returned an invalid draft lookup response.") from exc
+        return self.api(f"releases/{release_id}")
 
     def tag_commit(self, tag: str) -> str | None:
         ref = self.api(f"git/ref/tags/{tag}", missing_ok=True)
@@ -78,20 +94,32 @@ class GitHub:
             target = self.api(f"git/tags/{target['sha']}")["object"]
         raise ValueError("The release tag does not resolve to a commit.")
 
-    def create_draft(self, tag: str, commit: str) -> None:
-        command([
-            "gh", "release", "create", tag, "--repo", self.repository,
-            "--target", commit, "--title", f"VIVAaLingua {tag}", "--generate-notes", "--draft",
-        ])
+    def create_draft(self, tag: str, commit: str) -> dict:
+        return self.api("releases", method="POST", payload={
+            "tag_name": tag, "target_commitish": commit,
+            "name": f"VIVAaLingua {tag}", "generate_release_notes": True, "draft": True,
+        })
 
-    def upload(self, tag: str, paths: list[Path]) -> None:
-        command([
-            "gh", "release", "upload", tag, "--repo", self.repository,
-            "--clobber", *[str(path) for path in paths],
-        ])
+    def upload(self, release: dict, paths: list[Path]) -> dict:
+        if not release.get("draft"):
+            raise ValueError("Uploads require an unpublished draft.")
+        release_id = release["id"]
+        assets = {asset["name"]: asset for asset in release.get("assets", [])}
+        for path in paths:
+            previous = assets.get(path.name)
+            if previous is not None:
+                self.api(f"releases/assets/{previous['id']}", method="DELETE", empty_ok=True)
+            # These controlled package filenames need no URL escaping.
+            endpoint = f"https://uploads.github.com/repos/{self.repository}/releases/{release_id}/assets?name={path.name}"
+            assets[path.name] = self.api(endpoint, method="POST", input_file=path)
+        return {**release, "assets": list(assets.values())}
 
-    def publish(self, tag: str) -> None:
-        command(["gh", "release", "edit", tag, "--repo", self.repository, "--draft=false", "--latest"])
+    def publish(self, release: dict) -> dict:
+        if not release.get("draft"):
+            raise ValueError("Publication requires an unpublished draft.")
+        return self.api(f"releases/{release['id']}", method="PATCH", payload={
+            "draft": False, "make_latest": "true",
+        })
 
 
 def verify_assets(release: dict, paths: list[Path]) -> None:
@@ -204,20 +232,20 @@ def release_skill(root: Path, version: str, run_id: str, github: GitHub) -> str:
         verify_assets(existing, paths)
         commit_latest_packages(root, aliases, version)
         return existing["html_url"]
-    if existing is None:
-        github.create_draft(tag, commit)
-    pending = github.release(tag)
-    if pending is None or not pending.get("draft") or pending.get("target_commitish") != commit:
+    pending = existing if existing is not None else github.create_draft(tag, commit)
+    if (pending is None or not pending.get("draft") or pending.get("target_commitish") != commit
+            or pending.get("tag_name") != tag or not isinstance(pending.get("id"), int)):
         raise ValueError("Asset uploads require this run's unpublished draft.")
-    github.upload(tag, paths)
-    draft = github.release(tag)
-    if draft is None or not draft.get("draft") or draft.get("target_commitish") != commit:
+    draft = github.upload(pending, paths)
+    if (draft is None or not draft.get("draft") or draft.get("target_commitish") != commit
+            or draft.get("id") != pending["id"] or draft.get("tag_name") != tag):
         raise ValueError("Expected an unpublished draft targeting the release commit.")
     verify_assets(draft, paths)
-    github.publish(tag)
-    published = github.release(tag)
+    published = github.publish(draft)
     if published is None or published.get("draft") or published.get("prerelease"):
         raise ValueError("Release publication did not complete.")
+    if published.get("id") != draft["id"] or published.get("tag_name") != tag:
+        raise ValueError("Published release tag does not match the requested version.")
     if github.tag_commit(tag) != commit:
         raise ValueError("Published tag does not match the release commit.")
     verify_assets(published, paths)
