@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:\.(0|[1-9][0-9]*))?$")
-VERSION_FILE = "VIVAaLingua Version.txt"
+VERSION_FILE = Path("release/VIVAaLingua Version.txt")
 SKILL_FILE = Path("src/vivaalingua/SKILL.md")
 
 

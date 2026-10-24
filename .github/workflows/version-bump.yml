@@ -41,7 +41,7 @@ jobs:
         with:
           branch: automation/version-bump
           add-paths: |
-            VIVAaLingua Version.txt
+            release/VIVAaLingua Version.txt
             src/vivaalingua/SKILL.md
           delete-branch: false
           title: "Prepare VIVAaLingua ${{ inputs.version }}"

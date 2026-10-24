@@ -17,7 +17,8 @@ class VersionManagementTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         (self.root / "src/vivaalingua").mkdir(parents=True)
-        (self.root / "VIVAaLingua Version.txt").write_text(
+        (self.root / "release").mkdir()
+        (self.root / "release/VIVAaLingua Version.txt").write_text(
             "VIVAaLingua latest release\n\nLatest version: 1.5\n\nDownload page: https://example.test\n",
             encoding="utf-8",
         )
@@ -32,6 +33,8 @@ class VersionManagementTests(unittest.TestCase):
     def test_updates_both_fields_with_two_part_version(self) -> None:
         self.assertEqual(update_version(self.root, "1.6"), "1.5")
         self.assertEqual(coordinated_version(self.root), "1.6")
+        self.assertFalse((self.root / "VIVAaLingua Version.txt").exists())
+        self.assertIn("Latest version: 1.6", (self.root / "release/VIVAaLingua Version.txt").read_text(encoding="utf-8"))
 
     def test_updates_both_fields_with_three_part_version(self) -> None:
         self.assertEqual(update_version(self.root, "1.5.1"), "1.5")
