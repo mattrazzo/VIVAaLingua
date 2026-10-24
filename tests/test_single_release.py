@@ -113,7 +113,10 @@ class SingleReleaseTests(unittest.TestCase):
         skill.write_text(re.sub(r"Installed version: `[^`]+`", "Installed version: `1.5`", skill.read_text()))
         (self.root / "release").mkdir()
         (self.root / "release/VERSION").write_text("1.5\n")
-        (self.root / ".gitignore").write_text("/dist/\n__pycache__/\n")
+        (self.root / ".gitignore").write_text((SOURCE / ".gitignore").read_text() + "__pycache__/\n")
+        (self.root / "dist/latest").mkdir(parents=True)
+        for platform in ("ChatGPT", "Claude", "Gemini"):
+            (self.root / "dist/latest" / f"VIVAaLingua-{platform}.zip").write_bytes(b"previous published ZIP")
         command(["git", "add", "."], self.root)
         command(["git", "commit", "-m", "Initial content"], self.root)
         command(["git", "remote", "add", "origin", str(self.origin)], self.root)
@@ -133,14 +136,63 @@ class SingleReleaseTests(unittest.TestCase):
         self.assertEqual(self.github.events, ["draft", "upload", "publish"])
         self.assertEqual((self.root / "release/VERSION").read_text(), "1.6\n")
         head = command(["git", "rev-parse", "HEAD"], self.root)
-        self.assertEqual(self.github.tags["v1.6"], head)
+        self.assertEqual(self.github.tags["v1.6"], command(["git", "rev-parse", "HEAD^"], self.root))
         self.assertEqual(command(["git", "rev-parse", "refs/heads/main"], self.origin), head)
         changed = set(command(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"], self.root).splitlines())
-        self.assertEqual(changed, {"release/VERSION", "src/vivaalingua/SKILL.md"})
+        self.assertEqual(changed, {f"dist/latest/VIVAaLingua-{p}.zip" for p in ("ChatGPT", "Claude", "Gemini")})
+        version_changes = set(command(["git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD^"], self.root).splitlines())
+        self.assertEqual(version_changes, {"release/VERSION", "src/vivaalingua/SKILL.md"})
         for platform in ("ChatGPT", "Claude", "Gemini"):
             stable = self.root / "dist" / f"VIVAaLingua-{platform}.zip"
             versioned = self.root / "dist" / f"VIVAaLingua-{platform}-v1.6.zip"
             self.assertEqual(stable.read_bytes(), versioned.read_bytes())
+            self.assertEqual((self.root / "dist/latest" / stable.name).read_bytes(), stable.read_bytes())
+        self.assertEqual(command(["git", "status", "--porcelain", "--untracked-files=no"], self.root), "")
+
+    def test_latest_stays_on_previous_release_until_publication_succeeds(self):
+        self.github.fail_upload = True
+        with self.assertRaises(RuntimeError):
+            self.run_release()
+        latest = self.root / "dist/latest/VIVAaLingua-ChatGPT.zip"
+        self.assertEqual(latest.read_bytes(), b"previous published ZIP")
+        original_publish = self.github.publish
+
+        def publish(tag):
+            self.assertEqual(latest.read_bytes(), b"previous published ZIP")
+            original_publish(tag)
+
+        self.github.publish = publish
+        self.run_release()
+        self.assertEqual(latest.read_bytes(), (self.root / "dist/VIVAaLingua-ChatGPT.zip").read_bytes())
+
+    def test_failed_latest_push_can_resume_without_republishing(self):
+        real_command = command
+        pushes = 0
+
+        def fail_second_push(args, root=None):
+            nonlocal pushes
+            if args[:2] == ["git", "push"]:
+                pushes += 1
+                if pushes == 2:
+                    raise RuntimeError("git push failed: interrupted mirror push")
+            return real_command(args, root)
+
+        with patch("scripts.release_skill.command", side_effect=fail_second_push):
+            with self.assertRaisesRegex(RuntimeError, "interrupted mirror push"):
+                self.run_release()
+        self.assertFalse(self.github.data["draft"])
+        events = self.github.events.copy()
+        # A workflow rerun checks out current main, excluding the failed local commit.
+        command(["git", "reset", "--hard", "origin/main"], self.root)
+        self.run_release()
+        self.assertEqual(self.github.events, events)
+        self.assertEqual(command(["git", "rev-parse", "HEAD"], self.root),
+                         command(["git", "rev-parse", "refs/heads/main"], self.origin))
+        self.assertEqual((self.root / "dist/latest/VIVAaLingua-Claude.zip").read_bytes(),
+                         (self.root / "dist/VIVAaLingua-Claude.zip").read_bytes())
+        head = command(["git", "rev-parse", "HEAD"], self.root)
+        self.run_release()
+        self.assertEqual(command(["git", "rev-parse", "HEAD"], self.root), head)
 
     def test_three_part_version_is_supported(self):
         self.run_release("1.5.1")
@@ -168,7 +220,7 @@ class SingleReleaseTests(unittest.TestCase):
         self.assertTrue(self.github.data["draft"])
         head = command(["git", "rev-parse", "HEAD"], self.root)
         self.run_release()
-        self.assertEqual(command(["git", "rev-parse", "HEAD"], self.root), head)
+        self.assertEqual(command(["git", "rev-parse", "HEAD^"], self.root), head)
         self.assertEqual(self.github.events.count("draft"), 1)
         self.assertEqual(self.github.events.count("publish"), 1)
 
@@ -178,7 +230,7 @@ class SingleReleaseTests(unittest.TestCase):
             self.run_release()
         head = command(["git", "rev-parse", "HEAD"], self.root)
         self.run_release()
-        self.assertEqual(command(["git", "rev-parse", "HEAD"], self.root), head)
+        self.assertEqual(command(["git", "rev-parse", "HEAD^"], self.root), head)
 
     def test_completed_run_retry_verifies_without_replacing_assets(self):
         self.run_release()
@@ -256,7 +308,7 @@ class SingleReleaseTests(unittest.TestCase):
         fixed_head = command(["git", "rev-parse", "HEAD"], self.root)
         self.run_release()
         self.assertEqual(backend.tags["v1.6"], release_commit)
-        self.assertEqual(command(["git", "rev-parse", "HEAD"], self.root), fixed_head)
+        self.assertEqual(command(["git", "rev-parse", "HEAD^"], self.root), fixed_head)
         self.assertEqual(backend.events.count("draft"), 1)
         with self.assertRaisesRegex(ValueError, "same Actions run"):
             self.run_release(run_id="456")

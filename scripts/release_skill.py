@@ -106,6 +106,26 @@ def verify_assets(release: dict, paths: list[Path]) -> None:
             raise ValueError(f"Release asset digest does not match: {path.name}")
 
 
+def commit_latest_packages(root: Path, aliases: list[Path], version: str) -> None:
+    """Track the verified published ZIPs so a normal pull retrieves them."""
+    latest = root / "dist/latest"
+    latest.mkdir(parents=True, exist_ok=True)
+    relative_paths = []
+    for source in aliases:
+        destination = latest / source.name
+        shutil.copyfile(source, destination)
+        relative_paths.append(str(destination.relative_to(root)))
+    command(["git", "add", "--", *relative_paths], root)
+    if not command(["git", "diff", "--cached", "--name-only", "--", *relative_paths], root):
+        return
+    command(["git", "config", "user.name", "github-actions[bot]"], root)
+    command(["git", "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], root)
+    command(["git", "commit", "-m", f"Update latest skill ZIPs to v{version}"], root)
+    # A failed push leaves the published release intact. A fresh retry verifies
+    # its assets again and finishes this commit without republishing the release.
+    command(["git", "push", "origin", "HEAD:refs/heads/main"], root)
+
+
 def find_run_commit(root: Path, marker: str) -> str | None:
     candidates = command([
         "git", "log", "--format=%H", "--fixed-strings",
@@ -182,6 +202,7 @@ def release_skill(root: Path, version: str, run_id: str, github: GitHub) -> str:
         if tagged_commit != commit:
             raise ValueError("The published release does not match this run's commit.")
         verify_assets(existing, paths)
+        commit_latest_packages(root, aliases, version)
         return existing["html_url"]
     if existing is None:
         github.create_draft(tag, commit)
@@ -200,6 +221,7 @@ def release_skill(root: Path, version: str, run_id: str, github: GitHub) -> str:
     if github.tag_commit(tag) != commit:
         raise ValueError("Published tag does not match the release commit.")
     verify_assets(published, paths)
+    commit_latest_packages(root, aliases, version)
     return published["html_url"]
 
 
@@ -216,7 +238,7 @@ def main() -> int:
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
         with open(summary, "a", encoding="utf-8") as stream:
-            stream.write(f"Published [VIVAaLingua {args.version}]({url}) with all six ZIP assets.\n")
+            stream.write(f"Published [VIVAaLingua {args.version}]({url}) with all six ZIP assets and the three current ZIPs committed in `dist/latest/`.\n")
     return 0
 
 
