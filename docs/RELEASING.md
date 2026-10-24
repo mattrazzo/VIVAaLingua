@@ -1,6 +1,8 @@
 # Releasing VIVAaLingua skills
 
-The repository version is managed in two places: `release/VIVAaLingua Version.txt` and the Installed version field in `src/vivaalingua/SKILL.md`. The automation checks that they agree before packaging.
+The repository version is managed in two places: `release/VERSION` and the Installed version field in `src/vivaalingua/SKILL.md`. The automation checks that they agree before packaging. `release/VERSION` contains only the version number on one line, such as `1.5.1`, followed by a newline. It has no heading, `v` prefix, or download URL.
+
+The raw source URL is https://raw.githubusercontent.com/mattrazzo/VIVAaLingua/main/release/VERSION. Consumers must read the entire trimmed response as the version number rather than searching for a `Latest version:` label. This URL tracks the version on `main`, which may be ahead of the latest published release. A check intended to report published updates should use the latest GitHub Release metadata instead.
 
 ## Prepare the next version
 
