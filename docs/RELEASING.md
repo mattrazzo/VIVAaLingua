@@ -1,50 +1,58 @@
-# Releasing VIVAaLingua skills
+# Releasing VIVAaLingua Skills
 
-The repository version is managed in two places: `release/VERSION` and the Installed version field in `src/vivaalingua/SKILL.md`. The automation checks that they agree before packaging. `release/VERSION` contains only the version number on one line, such as `1.5.1`, followed by a newline. It has no heading, `v` prefix, or download URL.
+Use the **Release VIVAaLingua** workflow after your finished edits reach `main`. Entering a version and starting the workflow authorizes publication of that version. A normal push saves your changes without starting a product release.
 
-The raw source URL is https://raw.githubusercontent.com/mattrazzo/VIVAaLingua/main/release/VERSION. Consumers must read the entire trimmed response as the version number rather than searching for a `Latest version:` label. This URL tracks the version on `main`, which may be ahead of the latest published release. A check intended to report published updates should use the latest GitHub Release metadata instead.
+## Edit and Release Through GitHub Desktop
 
-## Prepare the next version
+1. Select the VIVAaLingua repository and the `main` branch. Click **Fetch origin**, then **Pull origin** if offered.
+2. Open the file in your editor, make your changes, and save it. Leave the version numbers for the release workflow to update.
+3. In GitHub Desktop, review **Changes**, enter a commit summary, and click **Commit to main**.
+4. Click **Push origin**. If you prefer to work on a branch, publish the branch and merge its PR into `main` first.
+5. Open the [Release VIVAaLingua workflow page](https://github.com/mattrazzo/VIVAaLingua/actions/workflows/release.yml) in your browser.
+6. Above the previous runs, click **Run workflow**. Select `main`, enter the next version without `v`, and click the green **Run workflow** button.
+7. Open the new run. When it succeeds, follow its release link to the published downloads.
 
-1. Open the repository’s **Actions** tab and select **Prepare version bump**.
-2. Select **Run workflow**, keep the `main` branch selected, enter the next version (`1.6` or `1.5.1` are valid examples), and run it.
-3. Review the pull request opened or updated by the workflow. Merge it only after confirming both version fields changed together.
+Before your next local edit, fetch and pull `main` again. The workflow creates a version commit on GitHub, which your local copy needs.
 
-The version must be greater than the current version. Two-part and three-part numeric versions are supported. A `v` prefix, leading zeroes, malformed values, and non-increasing versions fail before a pull request is created. The workflow uses one shared concurrency group so two version bump runs cannot edit the same PR at once.
+## Edit and Release Through GitHub’s Website
 
-## Publish and package the release
+1. Open the repository on `main`, open a file, and click its pencil icon.
+2. Make the change, preview it, and click **Commit changes**. Commit directly to `main`, or create a branch and merge its PR first.
+3. Open **Actions → Release VIVAaLingua → Run workflow**. Keep `main` selected, enter the next version without `v`, and click the green **Run workflow** button.
+4. Check that the run succeeds and the release contains all six ZIP assets.
 
-After merging the version pull request:
+The workflow replaces **Prepare version bump** and **Package published skill release**. You no longer merge a generated version PR, create a release tag, or fill out a separate release form. README and documentation edits are published by committing them to `main`. Run a release when you want updated skill packages.
 
-1. In **Releases**, choose **Draft a new release**.
-2. Create a tag exactly matching the merged version, with a `v` prefix, such as `v1.6`. Choose the commit on `main` that contains the merged version change as the tag target.
-3. Publish the release. Do not publish a tag-only release or create the release before merging the version PR.
-4. The **Package published skill release** workflow checks that the tag, version file, and `SKILL.md` all agree. It then builds and attaches the ChatGPT, Claude, and Gemini ZIP files.
+## What the Workflow Does
 
-The files are built in `dist/` and uploaded as release assets. They are ignored by Git and are not committed to the repository. Package paths are based on the known-good archives in `release/`: ChatGPT and Claude have a `vivaalingua/` wrapper, Gemini has `SKILL.md` at the ZIP root, and only ChatGPT includes `agents/openai.yaml`. All four references are included, matching the existing packages. System metadata such as `.DS_Store` and `__MACOSX` is excluded.
+The workflow runs the automated tests, validates the requested version, updates `release/VERSION` and the installed version in `src/vivaalingua/SKILL.md`, and builds the three platform packages. It adds identical copies under stable filenames, then commits and pushes only the two version files to `main`.
 
-## Permanent Download Links
+It creates a draft release targeting that version commit, uploads all six ZIPs, verifies their names, sizes, upload status, and SHA-256 digests when GitHub supplies them, then publishes the release and marks it as latest. Automatic release notes describe changes since the previous release. Generated ZIPs stay in the ignored `dist/` directory and are never committed.
 
-Every successful release build uploads six assets: one versioned ZIP and one identical copy with a stable filename for each platform. The release steps above stay the same.
+The version must increase and use two or three numeric components, such as `1.6` or `1.5.3`. Leading zeroes, a `v` prefix, existing tags, and mismatched version sources are rejected. One concurrency group prevents overlapping release runs. A concurrent push to `main` causes the version push to fail without overwriting the other change.
 
-Use these permanent URLs for website download buttons:
+## If a Run Fails
+
+A failed build publishes nothing. If an upload fails, its release remains a draft and the previous release stays latest.
+
+Open the failed run and choose **Re-run all jobs** to retry with the original version input. The same Actions run can resume its own version commit and unfinished draft. It checks an already completed release without replacing published assets. Starting a new workflow with the same version is rejected.
+
+Retry before making further commits to `main`. If `main` has advanced since a partially completed release, the workflow stops and requires inspection of that draft and version commit before recovery. It also stops if an existing draft or tag points to a different commit.
+
+## Permanent Downloads and Version Data
+
+Website buttons can use:
 
 - ChatGPT: https://github.com/mattrazzo/VIVAaLingua/releases/latest/download/VIVAaLingua-ChatGPT.zip
 - Claude: https://github.com/mattrazzo/VIVAaLingua/releases/latest/download/VIVAaLingua-Claude.zip
 - Gemini: https://github.com/mattrazzo/VIVAaLingua/releases/latest/download/VIVAaLingua-Gemini.zip
 
-GitHub redirects each URL to the matching asset in the latest release. Keep the stable filenames unchanged across releases. Versioned filenames remain available for downloads pinned to a particular release.
+Each release also keeps versioned filenames. The stable URLs become usable after a release containing those files succeeds. The website is updated separately in Sites.
 
-Merge this workflow update before creating the next release tag. These links become usable after a release containing this workflow finishes packaging, or after identical stable-name copies are added to the current release once. Existing releases do not gain assets when this PR is merged, and rerunning an older release workflow uses its older workflow revision.
+`release/VERSION` contains only a number and a newline. Its raw URL is https://raw.githubusercontent.com/mattrazzo/VIVAaLingua/main/release/VERSION. It tracks `main` and can advance before publication. For the latest published version, read `tag_name` from https://api.github.com/repos/mattrazzo/VIVAaLingua/releases/latest and remove the leading `v`.
 
-Before switching the website from Google Drive, confirm that all three permanent URLs download ZIPs. On later releases, wait for **Package published skill release** to succeed before announcing downloads. There can be a short interval between publication and attachment of the assets.
+## Permissions and Validation
 
-The website links are updated separately in Sites. No Google Drive copy is needed for future releases using these links.
+The workflow needs GitHub Actions enabled and `contents: write` for its built-in token. Repository rules must allow its version commit to reach `main`. It does not create PRs or require the Actions setting for creating and approving PRs.
 
-## Required repository setting
-
-For the version workflow to open or update a pull request with the built-in `GITHUB_TOKEN`, enable **Settings → Actions → General → Workflow permissions → Allow GitHub Actions to create and approve pull requests**. The workflow grants only `contents: write` and `pull-requests: write`. GitHub’s workflow dispatch policy must also allow manual dispatch. The setting is at [Settings → Actions → General](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository). If the repository or organization disables Actions, restricts dispatch events, or overrides token permissions, an administrator must adjust that policy.
-
-## Checks and limitations
-
-The workflows validate versions and packaging structure. They also reject release tags whose commit is not reachable from `main`. Current workflow actions use `actions/checkout@v7`, `actions/setup-python@v7`, `peter-evans/create-pull-request@v8`, and `softprops/action-gh-release@v3`. Static ZIP checks cannot confirm that every import surface accepts the packages or that the skill behaves correctly in ChatGPT, Claude, or Gemini. The existing archives establish the project’s current package conventions; platform import behavior can still vary by account, product surface, and current platform policy.
+The tests exercise real Git commits and pushes to temporary repositories, real ZIP builds, and simulated GitHub releases. They cover interrupted uploads, retries, invalid versions, conflicting tags, asset checks, and concurrent source changes. Passing these checks does not establish platform import acceptance, teaching accuracy, or audio accent.

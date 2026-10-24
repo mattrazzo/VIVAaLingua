@@ -1,0 +1,43 @@
+name: Release VIVAaLingua
+run-name: Release VIVAaLingua ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Next version without v, such as 1.6 or 1.5.3
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: vivaalingua-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Require main
+        env:
+          RELEASE_REF: ${{ github.ref }}
+        run: test "$RELEASE_REF" = "refs/heads/main" || { echo "Run this workflow on main." >&2; exit 1; }
+      - name: Check out current main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Check release automation
+        run: python -m unittest discover -s tests -v
+      - name: Prepare, build, and publish the release
+        env:
+          VERSION_INPUT: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/release_skill.py --version "$VERSION_INPUT"
